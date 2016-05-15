@@ -1,5 +1,6 @@
 *.class
 *.log
+src/main/resources/kafka.properties
 
 # sbt specific
 .cache
