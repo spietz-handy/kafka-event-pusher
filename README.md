@@ -11,4 +11,6 @@ To do:
 
 - [ ] dockerize
 
+for v2:
+
 - [ ] add ability to run against multiple topic/partition/endpoint combinations in parallel
