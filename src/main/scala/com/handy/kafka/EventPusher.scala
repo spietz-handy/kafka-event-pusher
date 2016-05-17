@@ -27,7 +27,6 @@ case class Resources(consumer: Consumer, client: Client, url: Uri)
 object EventPusher {
   val client = SimpleHttp1Client()
   val syncDuration = 1 seconds
-
   val retryDurs = Vector(
     200 millis , 
     500 millis ,
@@ -37,17 +36,6 @@ object EventPusher {
     1   minute
   )
 
-  def resourcesFor(topic: String, uriString: String) = {
-    val uri = uriFromString(uriString) match {
-      case \/-(uri: Uri) => uri
-      case -\/(e: UriParseError) => throw e
-    }
-
-    subscribe(topic).map(consumer =>
-      Resources(consumer, client, uri)
-    )
-  }
-    
   def pusher(r: Resources): Process[Task, Unit] =
     Process.repeatEval (
       Task(r.consumer.poll(1000).asScala.toSeq)
@@ -64,14 +52,15 @@ object EventPusher {
       )
     } onComplete (Process eval_ Task(r.consumer.close()))
     
-  def runAndLogError(stream: Process[Task, String]) =
-    stream.run.attemptRun
-
   def main(args: Array[String]): Unit = {
     val Array(topic, uriString) = args 
-    val resources = resourcesFor(topic, uriString)
-    val stream = Process.await(resources)(pusher)
 
+    val uri = uriFromString(uriString).valueOr(throw _)
+    val resources = subscribe(topic).map(consumer =>
+      Resources(consumer, client, uri)
+    )
+    
+    val stream = Process.await(resources)(pusher)
     val runStream = Task(
       stream.run.attemptRun.fold(e => e.getMessage, _ => "")
     )
@@ -87,7 +76,7 @@ object EventPusher {
 
     Process.repeatEval(runStream)
            .interleave(retryTimes)
-           .flatMap((msg: String) => Process eval_ Task(println(msg)))
+           .flatMap(msg => Process eval_ Task(println(msg)))
            .run.run
   }
 }
