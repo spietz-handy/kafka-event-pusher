@@ -26,8 +26,7 @@ object HttpSender {
     if (s.isSuccess) {
       println(s"request completed ${s.toString}")
     } else {
-      println(s"request to $uri failed: ${s.toString}")
-      //throw new KafkaSendError(s.toString)
+      throw new KafkaSendError(s.toString)
     }
   }
   
@@ -38,9 +37,8 @@ object HttpSender {
     client.fetch(req)(handleResponse(uri.toString))
   }
 
-  def sendRecord(rec: KafkaRecord, res: Resources, retryDurs: List[Duration]) = 
+  def sendRecord(rec: KafkaRecord, res: Resources): Task[KafkaRecord] =
     send(
       res.client, res.url, rec.offset, ByteVector(rec.value)
-    )//.retry(retryDurs)
-
+    ).map(_ => rec)
 }

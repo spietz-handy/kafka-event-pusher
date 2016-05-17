@@ -1,5 +1,6 @@
 *.class
 *.log
+*.swp
 src/main/resources/kafka.properties
 
 # sbt specific

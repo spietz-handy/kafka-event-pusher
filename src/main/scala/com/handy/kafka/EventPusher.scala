@@ -9,6 +9,7 @@ import Scalaz._
 import scalaz.syntax._
 import scalaz.concurrent.Task
 import scalaz.stream._
+import scalaz.stream.time.every
 
 import org.http4s.Uri
 import org.http4s.client.Client
@@ -18,12 +19,13 @@ import scodec.bits.ByteVector
 
 import com.handy.kafka.HttpSender._
 import com.handy.kafka.EventConsumer._
+ 
 
-  
 case class Resources(consumer: Consumer, client: Client, url: Uri)
 
 object EventPusher {
-  val retryDurs = List(200 millis, 1 seconds, 5 seconds)
+
+  val syncDuration = 1 seconds
 
   def pusher(r: Resources): Process[Task, Unit] =
     Process.repeatEval (
@@ -31,13 +33,15 @@ object EventPusher {
     ) flatMap (recs => 
       Process(recs: _*).toSource
     ) flatMap (rec =>
-      Process eval_ sendRecord(rec, r, retryDurs)
-    ) onComplete (Process eval_ Task(r.consumer.close()))
- 
-  def handleTask(res: Throwable \/ Unit): Unit = res match {
-    case \/-(()) => println("yoooooo")
-    case -\/(e: Throwable) => throw e
-  }
+      Process eval sendRecord(rec, r)
+    ) zip (
+      every(syncDuration)
+    ) flatMap { case (rec, sync) => 
+      Process eval_ (
+        if (sync) commitOffset(r.consumer, rec)
+        else Task.now(())
+      )
+    } onComplete (Process eval_ Task(r.consumer.close()))
 
   def main(args: Array[String]): Unit = {
     val Array(topic, uriString) = args 
@@ -55,13 +59,8 @@ object EventPusher {
     }
 
     val resources = resourcesFor(topic, uriString)
-    val resources2 = resourcesFor("user_schema_1", "http://www.google.com")
+    val stream = Process.await(resources)(pusher)
 
-    val s1 = Process.await(resources)(pusher)
-    val s2 = Process.await(resources2)(pusher)
-
-    val res = s1 merge s2
-
-    println(res.run.attemptRun)
+    println(stream.run.attemptRun)
   }
 }
